@@ -1,0 +1,707 @@
+// lib/main.dart
+import 'package:flutter/material.dart';
+import 'package:inventory_system/screens/auth/login_screen.dart';
+import 'package:inventory_system/screens/dashboard/dashboard_screen.dart';
+import 'package:inventory_system/screens/products/product_list_screen.dart';
+import 'package:inventory_system/providers/auth_provider.dart';
+import 'package:provider/provider.dart';
+
+void main() {
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        // Puedes añadir más providers aquí para productos, inventario, etc.
+      ],
+      child: MyApp(),
+    ),
+  );
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Sistema de Inventario',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+        // Configuración de Material Design
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.blueAccent,
+          foregroundColor: Colors.white,
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              bottom: Radius.circular(16),
+            ),
+          ),
+        ),
+        cardTheme: CardTheme(
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: EdgeInsets.all(8),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blueAccent,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.grey[200],
+          contentPadding: EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+          hintStyle: TextStyle(color: Colors.grey[600]),
+        ),
+        // Puedes añadir un tema oscuro aquí
+        // brightness: Brightness.light, // O Brightness.dark para modo oscuro
+      ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        primarySwatch: Colors.blueGrey,
+        // Configuración para el modo oscuro
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.blueGrey[800],
+          foregroundColor: Colors.white,
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              bottom: Radius.circular(16),
+            ),
+          ),
+        ),
+        cardTheme: CardTheme(
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: EdgeInsets.all(8),
+          color: Colors.blueGrey[700],
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blueGrey,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.grey[800],
+          contentPadding: EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+          hintStyle: TextStyle(color: Colors.grey[400]),
+        ),
+      ),
+      themeMode: ThemeMode.system, // O ThemeMode.dark / ThemeMode.light
+      home: Consumer<AuthProvider>(
+        builder: (context, authProvider, child) {
+          if (authProvider.isAuthenticated) {
+            return DashboardScreen(); // Si está autenticado, va al Dashboard
+          } else {
+            return LoginScreen(); // Si no, va a la pantalla de Login
+          }
+        },
+      ),
+      routes: {
+        '/login': (context) => LoginScreen(),
+        '/dashboard': (context) => DashboardScreen(),
+        '/products': (context) => ProductListScreen(),
+        // Agrega más rutas para otras pantallas
+      },
+    );
+  }
+}
+
+// lib/providers/auth_provider.dart
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http; // Para hacer peticiones HTTP
+import 'dart:convert'; // Para codificar/decodificar JSON
+
+class AuthProvider with ChangeNotifier {
+  String? _token;
+  bool _isAuthenticated = false;
+
+  String? get token => _token;
+  bool get isAuthenticated => _isAuthenticated;
+
+  // URL base de tu backend
+  final String _baseUrl = 'http://localhost:3000/api/auth'; // Cambia esto por la URL de tu backend
+
+  Future<bool> login(String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'email': email, 'password': password}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _token = data['token'];
+        _isAuthenticated = true;
+        notifyListeners(); // Notifica a los widgets que escuchan
+        return true;
+      } else {
+        // Manejar errores de login
+        print('Error de login: ${response.body}');
+        _isAuthenticated = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      print('Excepción en login: $e');
+      _isAuthenticated = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> register(String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'email': email, 'password': password}),
+      );
+
+      if (response.statusCode == 201) {
+        // Registro exitoso, podrías loguear al usuario automáticamente o redirigir al login
+        return true;
+      } else {
+        print('Error de registro: ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('Excepción en registro: $e');
+      return false;
+    }
+  }
+
+  void logout() {
+    _token = null;
+    _isAuthenticated = false;
+    notifyListeners();
+  }
+}
+
+// lib/screens/auth/login_screen.dart
+import 'package:flutter/material.dart';
+import 'package:inventory_system/providers/auth_provider.dart';
+import 'package:provider/provider.dart';
+
+class LoginScreen extends StatefulWidget {
+  @override
+  _LoginScreenState createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+
+  Future<void> _login() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    bool success = await authProvider.login(
+      _emailController.text,
+      _passwordController.text,
+    );
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (success) {
+      Navigator.of(context).pushReplacementNamed('/dashboard');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Credenciales inválidas. Inténtalo de nuevo.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Iniciar Sesión'),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              // 
+              Icon(
+                Icons.lock_open,
+                size: 100,
+                color: Theme.of(context).primaryColor,
+              ),
+              SizedBox(height: 48.0),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  labelText: 'Correo Electrónico',
+                  prefixIcon: Icon(Icons.email),
+                ),
+              ),
+              SizedBox(height: 16.0),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Contraseña',
+                  prefixIcon: Icon(Icons.lock),
+                ),
+              ),
+              SizedBox(height: 24.0),
+              _isLoading
+                  ? Center(child: CircularProgressIndicator())
+                  : ElevatedButton(
+                      onPressed: _login,
+                      child: Text('Iniciar Sesión'),
+                    ),
+              SizedBox(height: 16.0),
+              TextButton(
+                onPressed: () {
+                  // Navegar a la pantalla de registro
+                  // Navigator.of(context).pushNamed('/register'); // Necesitarías crear esta ruta
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Funcionalidad de registro no implementada en este ejemplo.')),
+                  );
+                },
+                child: Text('¿No tienes una cuenta? Regístrate aquí.'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// lib/screens/dashboard/dashboard_screen.dart
+import 'package:flutter/material.dart';
+import 'package:inventory_system/providers/auth_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:fl_chart/fl_chart.dart'; // Para gráficos, necesitas añadir esta dependencia en pubspec.yaml
+
+class DashboardScreen extends StatefulWidget {
+  @override
+  _DashboardScreenState createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Dashboard de Inventario'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.logout),
+            onPressed: () {
+              authProvider.logout();
+              Navigator.of(context).pushReplacementNamed('/login');
+            },
+          ),
+        ],
+      ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: <Widget>[
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor: Colors.white,
+                    child: Icon(Icons.person, size: 40, color: Theme.of(context).primaryColor),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'Bienvenido, Usuario', // Puedes mostrar el nombre del usuario aquí
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.dashboard),
+              title: Text('Dashboard'),
+              onTap: () {
+                Navigator.pop(context); // Cierra el drawer
+                // Ya estamos en el dashboard
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.inventory),
+              title: Text('Productos'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).pushNamed('/products');
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.warehouse),
+              title: Text('Almacenes'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Funcionalidad de Almacenes no implementada en este ejemplo.')),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.category),
+              title: Text('Categorías'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Funcionalidad de Categorías no implementada en este ejemplo.')),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.swap_horiz),
+              title: Text('Movimientos'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Funcionalidad de Movimientos no implementada en este ejemplo.')),
+                );
+              },
+            ),
+            Divider(),
+            ListTile(
+              leading: Icon(Icons.settings),
+              title: Text('Configuración'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Funcionalidad de Configuración no implementada en este ejemplo.')),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'Resumen del Inventario',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 20),
+            // Tarjetas de métricas rápidas
+            Row(
+              children: [
+                Expanded(
+                  child: DashboardMetricCard(
+                    title: 'Productos en Stock',
+                    value: '1250', // Datos reales vendrían de la API
+                    icon: Icons.storage,
+                    color: Colors.green,
+                  ),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: DashboardMetricCard(
+                    title: 'Ventas del Mes',
+                    value: '\$15,200', // Datos reales vendrían de la API
+                    icon: Icons.attach_money,
+                    color: Colors.blue,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 20),
+            Text(
+              'Gráfico de Ventas Mensuales',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Container(
+              height: 250,
+              padding: EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(show: false),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          const style = TextStyle(
+                            color: Color(0xff7589a2),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          );
+                          Widget text;
+                          switch (value.toInt()) {
+                            case 0: text = const Text('Ene', style: style); break;
+                            case 1: text = const Text('Feb', style: style); break;
+                            case 2: text = const Text('Mar', style: style); break;
+                            case 3: text = const Text('Abr', style: style); break;
+                            case 4: text = const Text('May', style: style); break;
+                            case 5: text = const Text('Jun', style: style); break;
+                            default: text = const Text('', style: style); break;
+                          }
+                          return SideTitleWidget(axisSide: meta.axisSide, space: 8, child: text);
+                        },
+                        reservedSize: 30,
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, meta) {
+                          const style = TextStyle(
+                            color: Color(0xff7589a2),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          );
+                          return Text('${value.toInt()}k', style: style, textAlign: TextAlign.left);
+                        },
+                      ),
+                    ),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(
+                    show: true,
+                    border: Border.all(color: const Color(0xff37434d), width: 1),
+                  ),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: const [
+                        FlSpot(0, 3),
+                        FlSpot(1, 2),
+                        FlSpot(2, 5),
+                        FlSpot(3, 3.1),
+                        FlSpot(4, 4),
+                        FlSpot(5, 3),
+                      ],
+                      isCurved: true,
+                      color: Colors.blueAccent,
+                      barWidth: 5,
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(show: false),
+                      belowBarData: BarAreaData(show: true, color: Colors.blueAccent.withOpacity(0.3)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(height: 20),
+            Text(
+              'Productos con Stock Bajo',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            // Lista de productos con stock bajo (ejemplo estático)
+            Card(
+              child: ListTile(
+                leading: Icon(Icons.warning, color: Colors.orange),
+                title: Text('Producto A'),
+                subtitle: Text('Stock: 5 unidades'),
+                trailing: Icon(Icons.arrow_forward_ios),
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Ver detalles de Producto A')),
+                  );
+                },
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: Icon(Icons.warning, color: Colors.orange),
+                title: Text('Producto B'),
+                subtitle: Text('Stock: 2 unidades'),
+                trailing: Icon(Icons.arrow_forward_ios),
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Ver detalles de Producto B')),
+                  );
+                },
+              ),
+            ),
+            // Más elementos del dashboard
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class DashboardMetricCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  const DashboardMetricCard({
+    Key? key,
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: color.withOpacity(0.1),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 36, color: color),
+            SizedBox(height: 10),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 5),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// lib/screens/products/product_list_screen.dart
+import 'package:flutter/material.dart';
+
+class ProductListScreen extends StatefulWidget {
+  @override
+  _ProductListScreenState createState() => _ProductListScreenState();
+}
+
+class _ProductListScreenState extends State<ProductListScreen> {
+  // Aquí iría la lógica para cargar productos desde la API
+  // List<Product> _products = [];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Gestión de Productos'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.add),
+            onPressed: () {
+              // Navegar a la pantalla para añadir un nuevo producto
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Funcionalidad para añadir producto no implementada.')),
+              );
+            },
+          ),
+        ],
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16.0),
+        itemCount: 5, // Reemplazar con _products.length
+        itemBuilder: (context, index) {
+          // Esto es un ejemplo estático, reemplazar con datos reales de productos
+          return Card(
+            margin: EdgeInsets.symmetric(vertical: 8.0),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                child: Icon(Icons.shopping_bag, color: Theme.of(context).primaryColor),
+              ),
+              title: Text('Producto ${index + 1}', style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text('SKU: PROD00${index + 1} | Stock: ${50 - index * 5}'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.edit, color: Colors.blue),
+                    onPressed: () {
+                      // Lógica para editar producto
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Editar Producto ${index + 1}')),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.delete, color: Colors.red),
+                    onPressed: () {
+                      // Lógica para eliminar producto
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Eliminar Producto ${index + 1}')),
+                      );
+                    },
+                  ),
+                ],
+              ),
+              onTap: () {
+                // Navegar a los detalles del producto
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Ver detalles de Producto ${index + 1}')),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
