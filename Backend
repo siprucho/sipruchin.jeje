@@ -1,0 +1,369 @@
+// app.js (Archivo principal de la aplicación Express)
+const express = require('express');
+const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+const morgan = require('morgan'); // Para logging de peticiones HTTP
+const cors = require('cors'); // Para permitir peticiones desde el frontend Flutter
+
+const authRoutes = require('./routes/auth');
+const productRoutes = require('./routes/product');
+// Importa más rutas según sea necesario (usuarios, almacenes, movimientos, etc.)
+
+dotenv.config(); // Carga las variables de entorno desde .env
+
+const app = express();
+
+// Middleware
+app.use(express.json()); // Para parsear el body de las peticiones JSON
+app.use(morgan('dev')); // Logger de peticiones HTTP (muestra logs en consola)
+app.use(cors()); // Permite todas las peticiones CORS. En producción, configura esto para dominios específicos.
+
+// Conexión a la base de datos MongoDB
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('Conectado a MongoDB'))
+  .catch(err => console.error('Error al conectar a MongoDB:', err));
+
+// Rutas
+app.use('/api/auth', authRoutes);
+app.use('/api/products', productRoutes);
+// Agrega más rutas aquí, por ejemplo:
+// app.use('/api/users', userRoutes);
+// app.use('/api/warehouses', warehouseRoutes);
+// app.use('/api/movements', movementRoutes);
+
+// Manejo de errores global
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ message: 'Algo salió mal en el servidor!', error: err.message });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en el puerto ${PORT}`);
+});
+```javascript
+// .env (Archivo de variables de entorno - crea este archivo en la raíz de tu proyecto)
+MONGO_URI=mongodb://localhost:27017/inventory_db
+JWT_SECRET=tu_secreto_jwt_muy_seguro_y_largo
+```javascript
+// models/User.js
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs'); // Para hashear contraseñas
+
+const UserSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true,
+  },
+  password: {
+    type: String,
+    required: true,
+  },
+  role: {
+    type: String,
+    enum: ['admin', 'user'], // Define los roles
+    default: 'user',
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+// Middleware para hashear la contraseña antes de guardar
+UserSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) {
+    return next();
+  }
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
+});
+
+// Método para comparar contraseñas
+UserSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+module.exports = mongoose.model('User', UserSchema);
+```javascript
+// models/Product.js
+const mongoose = require('mongoose');
+
+const ProductSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  sku: { // Stock Keeping Unit
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+  },
+  description: {
+    type: String,
+    trim: true,
+  },
+  price: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  category: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category', // Referencia a la colección de categorías
+  },
+  currentStock: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  minStockLevel: { // Nivel mínimo para notificaciones
+    type: Number,
+    default: 10,
+    min: 0,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+// Índice para búsquedas rápidas por SKU
+ProductSchema.index({ sku: 1 });
+
+module.exports = mongoose.model('Product', ProductSchema);
+```javascript
+// middleware/auth.js (Middleware de autenticación y autorización)
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+const protect = async (req, res, next) => {
+  let token;
+
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    try {
+      // Obtener token de la cabecera
+      token = req.headers.authorization.split(' ')[1];
+
+      // Verificar token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Adjuntar usuario a la petición
+      req.user = await User.findById(decoded.id).select('-password'); // Excluir contraseña
+      next();
+    } catch (error) {
+      console.error(error);
+      res.status(401).json({ message: 'No autorizado, token fallido' });
+    }
+  }
+
+  if (!token) {
+    res.status(401).json({ message: 'No autorizado, no hay token' });
+  }
+};
+
+const authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: `Usuario con rol ${req.user.role} no autorizado para acceder a esta ruta` });
+    }
+    next();
+  };
+};
+
+module.exports = { protect, authorize };
+```javascript
+// routes/auth.js
+const express = require('express');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+const router = express.Router();
+
+// Generar JWT
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: '1h', // El token expira en 1 hora
+  });
+};
+
+// @desc    Registrar un nuevo usuario
+// @route   POST /api/auth/register
+// @access  Public
+router.post('/register', async (req, res) => {
+  const { email, password, role } = req.body;
+
+  try {
+    // Verificar si el usuario ya existe
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: 'El usuario ya existe' });
+    }
+
+    // Crear nuevo usuario
+    const user = await User.create({
+      email,
+      password,
+      role: role || 'user', // Si no se especifica, por defecto es 'user'
+    });
+
+    if (user) {
+      res.status(201).json({
+        _id: user._id,
+        email: user.email,
+        role: user.role,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(400).json({ message: 'Datos de usuario inválidos' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Autenticar usuario y obtener token
+// @route   POST /api/auth/login
+// @access  Public
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    // Buscar usuario por email
+    const user = await User.findOne({ email });
+
+    // Verificar usuario y contraseña
+    if (user && (await user.matchPassword(password))) {
+      res.json({
+        _id: user._id,
+        email: user.email,
+        role: user.role,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(401).json({ message: 'Email o contraseña inválidos' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+module.exports = router;
+```javascript
+// routes/product.js
+const express = require('express');
+const Product = require('../models/Product');
+const { protect, authorize } = require('../middleware/auth');
+
+const router = express.Router();
+
+// @desc    Obtener todos los productos
+// @route   GET /api/products
+// @access  Private
+router.get('/', protect, async (req, res) => {
+  try {
+    const products = await Product.find({});
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Obtener un producto por ID
+// @route   GET /api/products/:id
+// @access  Private
+router.get('/:id', protect, async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (product) {
+      res.json(product);
+    } else {
+      res.status(404).json({ message: 'Producto no encontrado' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Crear un nuevo producto
+// @route   POST /api/products
+// @access  Private/Admin
+router.post('/', protect, authorize('admin'), async (req, res) => {
+  const { name, sku, description, price, category, currentStock, minStockLevel } = req.body;
+
+  try {
+    const product = new Product({
+      name,
+      sku,
+      description,
+      price,
+      category,
+      currentStock,
+      minStockLevel,
+    });
+
+    const createdProduct = await product.save();
+    res.status(201).json(createdProduct);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Actualizar un producto
+// @route   PUT /api/products/:id
+// @access  Private/Admin
+router.put('/:id', protect, authorize('admin'), async (req, res) => {
+  const { name, sku, description, price, category, currentStock, minStockLevel } = req.body;
+
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (product) {
+      product.name = name || product.name;
+      product.sku = sku || product.sku;
+      product.description = description || product.description;
+      product.price = price || product.price;
+      product.category = category || product.category;
+      product.currentStock = currentStock ?? product.currentStock; // Usar nullish coalescing para 0
+      product.minStockLevel = minStockLevel ?? product.minStockLevel;
+      product.updatedAt = Date.now();
+
+      const updatedProduct = await product.save();
+      res.json(updatedProduct);
+    } else {
+      res.status(404).json({ message: 'Producto no encontrado' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Eliminar un producto
+// @route   DELETE /api/products/:id
+// @access  Private/Admin
+router.delete('/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (product) {
+      await product.deleteOne(); // Usar deleteOne() para eliminar el documento
+      res.json({ message: 'Producto eliminado' });
+    } else {
+      res.status(404).json({ message: 'Producto no encontrado' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+module.exports = router;
