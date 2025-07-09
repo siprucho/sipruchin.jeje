@@ -1,0 +1,20 @@
+inventory-backend/
+├── .env
+├── app.js
+├── package.json
+├── models/
+│   ├── User.js
+│   ├── Product.js
+│   ├── Category.js
+│   ├── Warehouse.js
+│   ├── Movement.js
+│   └── Log.js
+├── routes/
+│   ├── auth.js
+│   ├── product.js
+│   ├── user.js
+│   ├── warehouse.js
+│   └── movement.js
+├── middleware/
+│   └── auth.js
+└── utils/ (para utilidades como generadores de reportes)
